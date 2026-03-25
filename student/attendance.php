@@ -39,32 +39,3 @@ if ($selectedCourseId) {
     }
 }
 ?>
-<h1>Attendance Details</h1>
-
-<form class="panel" method="get">
-    <div class="form-row">
-        <label><span class="small">Course</span>
-            <select class="input" name="course_id" onchange="this.form.submit()">
-                <option value="">Choose course</option>
-                <?php foreach ($courses as $c): ?>
-                    <option value="<?= (int)$c['id'] ?>" <?= $selectedCourseId === (int)$c['id'] ? 'selected' : '' ?>>
-                        <?= esc($c['course_code'] . ' - ' . $c['course_title']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-    </div>
-</form>
-
-<?php if ($selectedCourse && $details): ?>
-    <div class="panel" style="margin-top:20px;">
-        <h3 style="margin-top:0;"><?= esc($selectedCourse['course_code'] . ' - ' . $selectedCourse['course_title']) ?></h3>
-        <div class="grid-3">
-            <div class="stat"><div class="label">Lecture</div><div class="value"><?= (int)$details['attended_l'] ?>/<?= (int)$details['total_l'] ?></div></div>
-            <div class="stat"><div class="label">Tutorial</div><div class="value"><?= (int)$details['attended_t'] ?>/<?= (int)$details['total_t'] ?></div></div>
-            <div class="stat"><div class="label">Workshop</div><div class="value"><?= (int)$details['attended_w'] ?>/<?= (int)$details['total_w'] ?></div></div>
-        </div>
-    </div>
-<?php endif; ?>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
