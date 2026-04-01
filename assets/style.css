@@ -1,0 +1,73 @@
+/* Feature 1 Styles */
+
+.feature1-container{
+    max-width:900px;
+    margin:auto;
+}
+
+.feature1-panel{
+    background:#fff;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 5px 15px rgba(0,0,0,0.08);
+    margin-bottom:25px;
+}
+
+.feature1-row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:15px;
+}
+
+.feature1-panel label{
+    display:block;
+    margin-bottom:12px;
+    font-weight:500;
+}
+
+.feature1-panel input,
+.feature1-panel textarea,
+.feature1-panel select{
+    width:100%;
+    padding:10px;
+    border:1px solid #ddd;
+    border-radius:8px;
+    margin-top:5px;
+}
+
+.feature1-panel textarea{
+    min-height:120px;
+}
+
+.feature1-btn{
+    background:#2457ff;
+    color:white;
+    border:none;
+    padding:12px 18px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-top:10px;
+}
+
+.feature1-btn:hover{
+    background:#1838a8;
+}
+
+.feature1-table{
+    width:100%;
+    border-collapse:collapse;
+    background:white;
+    border-radius:10px;
+    overflow:hidden;
+}
+
+.feature1-table th,
+.feature1-table td{
+    padding:12px;
+    border-bottom:1px solid #eee;
+    text-align:left;
+}
+
+.feature1-table th{
+    background:#f4f6fb;
+}
