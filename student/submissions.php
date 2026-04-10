@@ -2,6 +2,13 @@
 require_once __DIR__ . '/../includes/header.php';
 require_role('Student');
 
+/*
+|--------------------------------------------------------------------------
+| Feature 2 | Suprim: Assignment file upload engine with deadline enforcement
+| Feature 3 | Suprim: Automated time-fencing with server-side deadline validation
+|--------------------------------------------------------------------------
+*/
+
 $pdo = db();
 $studentId = current_user()['id'];
 $uploadDir = __DIR__ . '/../storage/uploads/assignments/';
