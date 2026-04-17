@@ -1,5 +1,6 @@
 <?php
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/auth.php';
 ensure_user_active();
 
 $user = current_user();
@@ -36,18 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
         if (!is_dir($dir)) mkdir($dir, 0755, true);
 
         if (move_uploaded_file($file['tmp_name'], $dir . $filename)) {
-            // Update DB
-            try {
-                $stmt = $pdo->prepare("UPDATE users SET profile_photo = ? WHERE id = ?");
-                $stmt->execute([$filename, $user['id']]);
-                // Update session
-                $_SESSION['user']['profile_photo'] = $filename;
-                flash_set('success', 'Profile photo updated successfully.');
-            } catch (\Exception $e) {
-                // Column might not exist yet; still show success on file level
-                $_SESSION['user']['profile_photo'] = $filename;
-                flash_set('success', 'Photo saved! (Run the DB migration to persist across sessions.)');
-            }
+            // Persist to DB and sync session
+            $stmt = $pdo->prepare("UPDATE users SET profile_photo = ? WHERE id = ?");
+            $stmt->execute([$filename, $user['id']]);
+            $_SESSION['user']['profile_photo'] = $filename;
+            flash_set('success', 'Profile photo updated successfully.');
         } else {
             flash_set('error', 'Could not save photo. Check storage directory permissions.');
         }
@@ -74,6 +68,9 @@ $memberSince = '';
 if (!empty($freshUser['created_at'])) {
     $memberSince = date('F j, Y', strtotime($freshUser['created_at']));
 }
+
+// All POST handled — safe to output HTML
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-hd">

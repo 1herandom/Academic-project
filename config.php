@@ -21,7 +21,7 @@ define('DB_NAME',      'smart_edu');
 define('DB_USER',      'root');
 define('DB_PASS',      '');
 define('APP_NAME',     'Herald');
-define('APP_BASE_URL', '/test/smartedu');
+define('APP_BASE_URL', '/smartedu');
 
 function db(): PDO {
     static $pdo = null;
@@ -73,13 +73,13 @@ function slugify(string $value): string {
     return trim($value, '.') ?: 'user';
 }
 
-function unique_code(int $length, string $column, string $table): string {
+function unique_code(int $length, string $column): string {
     $min = (int) str_pad('1', $length, '0');
     $max = (int) str_repeat('9', $length);
     $pdo = db();
     do {
         $code  = (string) random_int($min, $max);
-        $stmt  = $pdo->prepare("SELECT COUNT(*) FROM {$table} WHERE {$column} = ?");
+        $stmt  = $pdo->prepare("SELECT COUNT(*) FROM users WHERE {$column} = ?");
         $stmt->execute([$code]);
         $exists = (int)$stmt->fetchColumn() > 0;
     } while ($exists);
@@ -116,7 +116,6 @@ function login_user(array $user, bool $remember = false): void {
         'first_name'       => $user['first_name'],
         'last_name'        => $user['last_name'],
         'role'             => $user['role'],
-        'table'            => $user['table'] ?? '',
         'email'            => $user['email'],
         'teacher_code'     => $user['teacher_code']  ?? null,
         'student_code'     => $user['student_code']  ?? null,
@@ -129,8 +128,7 @@ function login_user(array $user, bool $remember = false): void {
         $validator = bin2hex(random_bytes(32));
         $hash      = hash('sha256', $validator);
         $expires   = gmdate('Y-m-d H:i:s', time() + 60 * 60 * 24 * 30);
-        $table     = $user['table'] ?? 'admins';
-        $stmt = db()->prepare("UPDATE {$table} SET remember_selector = ?, remember_token_hash = ?, remember_expires_at = ? WHERE id = ?");
+        $stmt = db()->prepare("UPDATE users SET remember_selector = ?, remember_token_hash = ?, remember_expires_at = ? WHERE id = ?");
         $stmt->execute([$selector, $hash, $expires, $user['id']]);
         setcookie('smartedu_remember', $selector . ':' . $validator, [
             'expires'  => time() + 60 * 60 * 24 * 30,
@@ -146,10 +144,8 @@ function logout_user(): void {
     if (!empty($_COOKIE['smartedu_remember'])) {
         [$selector] = array_pad(explode(':', $_COOKIE['smartedu_remember'], 2), 2, '');
         if ($selector !== '') {
-            foreach(['admins','teachers','students'] as $t) {
-                $stmt = db()->prepare("UPDATE {$t} SET remember_selector = NULL, remember_token_hash = NULL, remember_expires_at = NULL WHERE remember_selector = ?");
-                $stmt->execute([$selector]);
-            }
+            $stmt = db()->prepare("UPDATE users SET remember_selector = NULL, remember_token_hash = NULL, remember_expires_at = NULL WHERE remember_selector = ?");
+            $stmt->execute([$selector]);
         }
         setcookie('smartedu_remember', '', time() - 3600, '/');
     }
@@ -162,27 +158,11 @@ function attempt_remember_login(): void {
     [$selector, $validator] = array_pad(explode(':', $_COOKIE['smartedu_remember'], 2), 2, '');
     if ($selector === '' || $validator === '') return;
 
-    $tables = ['admins' => 'Academic Admin', 'teachers' => 'Teacher', 'students' => 'Student'];
-    $user = null;
-    $role = null;
-    $table = null;
-
-    foreach ($tables as $t => $r) {
-        $stmt = db()->prepare("SELECT * FROM {$t} WHERE remember_selector = ? AND remember_expires_at > UTC_TIMESTAMP() LIMIT 1");
-        $stmt->execute([$selector]);
-        if ($u = $stmt->fetch()) {
-            $user = $u;
-            $role = $r;
-            $table = $t;
-            break;
-        }
-    }
-
+    $stmt = db()->prepare("SELECT * FROM users WHERE remember_selector = ? AND remember_expires_at > UTC_TIMESTAMP() LIMIT 1");
+    $stmt->execute([$selector]);
+    $user = $stmt->fetch();
     if (!$user) return;
     if (!hash_equals($user['remember_token_hash'] ?? '', hash('sha256', $validator))) return;
-    
-    $user['role'] = $role;
-    $user['table'] = $table;
     login_user($user, false);
 }
 

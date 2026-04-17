@@ -27,10 +27,9 @@ $flash = flash_get();
     <div class="auth-left">
         <div class="auth-box">
 
-            <!-- Brand -->
             <div class="auth-brand-badge">H</div>
             <h1 class="auth-title">Welcome to Herald</h1>
-            <p class="auth-sub">Sign in with your institutional ID to access your role-based dashboard.</p>
+            <p class="auth-sub">Sign in with your college email or Institutional ID to access your dashboard.</p>
 
             <!-- Flash -->
             <?php if ($flash): ?>
@@ -43,18 +42,19 @@ $flash = flash_get();
             </div>
             <?php endif; ?>
 
-            <!-- Login form -->
-            <form method="post" action="">
+            <form method="post" action="" id="login-form" autocomplete="on">
 
-                <div class="form-group">
-                    <label for="institutional_id">Institutional ID</label>
+                <div class="form-group" style="position:relative;">
+                    <label for="login_field">Email or Institutional ID</label>
                     <input class="input"
-                           id="institutional_id"
+                           id="login_field"
                            type="text"
-                           name="institutional_id"
-                           placeholder="e.g. 100123"
+                           name="login"
+                           placeholder="e.g. john.doe1234@herald.edu.np"
                            autocomplete="username"
                            required>
+                    <!-- Recent logins dropdown -->
+                    <div id="recent-logins-dropdown" style="display:none;"></div>
                 </div>
 
                 <div class="form-group">
@@ -131,6 +131,126 @@ $flash = flash_get();
     </div>
 
 </div>
+<style>
+#recent-logins-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--surface-raised, #1e1e2e);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 10px;
+    margin-top: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    z-index: 100;
+    overflow: hidden;
+}
+.recent-login-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-muted, #aaa);
+    transition: background 0.15s;
+}
+.recent-login-item:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--text, #fff);
+}
+.recent-login-item svg { flex-shrink: 0; opacity: 0.6; }
+.recent-login-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-login-clear {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--herald-red, #e05);
+    background: none;
+    border: none;
+    border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+.recent-login-clear:hover { background: rgba(255,0,0,0.06); }
+</style>
 <script src="<?= APP_BASE_URL ?>/assets/app.js" defer></script>
+<script>
+(function() {
+    const STORAGE_KEY = 'herald_recent_logins';
+    const MAX = 5;
+
+    function getRecent() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+        catch { return []; }
+    }
+
+    function saveRecent(logins) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(logins.slice(0, MAX)));
+    }
+
+    function addRecent(val) {
+        if (!val) return;
+        let list = getRecent().filter(x => x !== val);
+        list.unshift(val);
+        saveRecent(list);
+    }
+
+    const input = document.getElementById('login_field');
+    const dropdown = document.getElementById('recent-logins-dropdown');
+    if (!input || !dropdown) return;
+
+    function renderDropdown() {
+        const list = getRecent();
+        if (list.length === 0) { dropdown.style.display = 'none'; return; }
+        dropdown.innerHTML = '';
+        list.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'recent-login-item';
+            div.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>${item}</span>`;
+            div.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                input.value = item;
+                dropdown.style.display = 'none';
+                input.focus();
+            });
+            dropdown.appendChild(div);
+        });
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'recent-login-clear';
+        clearBtn.textContent = '✕ Clear recent logins';
+        clearBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            localStorage.removeItem(STORAGE_KEY);
+            dropdown.style.display = 'none';
+        });
+        dropdown.appendChild(clearBtn);
+        dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('focus', () => {
+        if (getRecent().length > 0 && input.value === '') renderDropdown();
+    });
+    input.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+    input.addEventListener('input', () => {
+        if (input.value !== '') { dropdown.style.display = 'none'; }
+        else { renderDropdown(); }
+    });
+
+    // Save login value on form submit
+    const form = document.getElementById('login-form');
+    if (form) {
+        form.addEventListener('submit', () => {
+            const val = input.value.trim();
+            if (val) addRecent(val);
+        });
+    }
+})();
+</script>
 </body>
 </html>
