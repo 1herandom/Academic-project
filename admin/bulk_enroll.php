@@ -9,12 +9,38 @@ require_role('Academic Admin');
 |--------------------------------------------------------------------------
 */
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['export_csv'])) {
+    $data = json_decode($_POST['export_data'] ?? '[]', true);
+    if (!empty($data)) {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="student_credentials_' . date('Ymd_His') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, array_keys($data[0]));
+        foreach ($data as $row) fputcsv($out, $row);
+        fclose($out);
+        exit;
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download_template'])) {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="bulk_enroll_template.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID', 'First Name', 'Last Name']);
+    fputcsv($out, ['', 'John', 'Doe']);
+    fputcsv($out, ['', 'Jane', 'Smith']);
+    fclose($out);
+    exit;
+}
+
 $pdo = db();
 $report = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_csv'])) {
     $courseId = (int)($_POST['course_id'] ?? 0);
     $dryRun = !empty($_POST['dry_run']);
+    $clusterGroup = trim($_POST['cluster_group'] ?? '');
+    
     if ($courseId <= 0 || empty($_FILES['csv_file']['tmp_name'])) {
         flash_set('error', 'Select a course and upload a CSV file.');
         redirect('/admin/bulk_enroll.php');
@@ -47,42 +73,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_csv'])) {
     }
 
     $idIndex = array_search('ID', array_map('trim', $header), true);
-    if ($idIndex === false) {
-        flash_set('error', 'CSV must contain an "ID" column.');
+    $firstIndex = array_search('First Name', array_map('trim', $header), true);
+    $lastIndex = array_search('Last Name', array_map('trim', $header), true);
+    
+    if ($idIndex === false && ($firstIndex === false || $lastIndex === false)) {
+        flash_set('error', 'CSV must contain an "ID" column or "First Name" & "Last Name" columns.');
         redirect('/admin/bulk_enroll.php');
     }
 
     $valid = [];
     $errors = [];
+    $generatedUsers = [];
     $total = 0;
 
-    $checkUser = $pdo->prepare("SELECT id, role, status FROM users WHERE institutional_id = ? LIMIT 1");
+    $checkUser = $pdo->prepare("SELECT id, status FROM students WHERE institutional_id = ? LIMIT 1");
     $checkEnroll = $pdo->prepare("SELECT COUNT(*) FROM enrollments WHERE course_id = ? AND student_user_id = ?");
     $insertEnroll = $pdo->prepare("INSERT INTO enrollments (course_id, student_user_id) VALUES (?, ?)");
 
     while (($row = fgetcsv($handle)) !== false) {
         $total++;
-        $institutionalId = trim($row[$idIndex] ?? '');
-        if ($institutionalId === '') {
-            $errors[] = "Row {$total}: empty ID.";
-            continue;
+        $institutionalId = $idIndex !== false ? trim($row[$idIndex] ?? '') : '';
+        
+        $user = false;
+        if ($institutionalId !== '') {
+            $checkUser->execute([$institutionalId]);
+            $user = $checkUser->fetch();
         }
 
-        $checkUser->execute([$institutionalId]);
-        $user = $checkUser->fetch();
+        $userId = null;
+        if (!$user) {
+            if ($firstIndex === false || $lastIndex === false) {
+                $errors[] = "Row {$total}: Missing First Name or Last Name columns to create user.";
+                continue;
+            }
+            $firstName = trim($row[$firstIndex] ?? '');
+            $lastName = trim($row[$lastIndex] ?? '');
+            if ($firstName === '' || $lastName === '') {
+                $errors[] = "Row {$total}: Missing First Name or Last Name.";
+                continue;
+            }
 
-        if (!$user || $user['role'] !== 'Student' || $user['status'] !== 'active') {
-            $errors[] = "Row {$total}: ID {$institutionalId} not found in active student records.";
-            continue;
+            if (!$dryRun) {
+                $studentCode = unique_code(4, 'student_code', 'students');
+                $institutionalId = $course['course_code'] . $studentCode;
+                $email = strtolower($institutionalId) . '@smart.edu.no';
+                $tempPassword = generate_temp_password();
+                $hash = password_hash($tempPassword, PASSWORD_BCRYPT);
+                $cmd = $pdo->prepare("INSERT INTO students (institutional_id, first_name, last_name, email, student_code, password_hash, temp_password, status, cluster_group) VALUES (?, ?, ?, ?, ?, ?, 1, 'active', ?)");
+                $cmd->execute([$institutionalId, $firstName, $lastName, $email, $studentCode, $hash, $clusterGroup ?: null]);
+                $userId = (int)$pdo->lastInsertId();
+                $generatedUsers[] = [
+                    'Name' => $firstName . ' ' . $lastName,
+                    'ID' => $institutionalId,
+                    'Email' => $email,
+                    'Password' => $tempPassword,
+                    'Cluster/Group' => $clusterGroup
+                ];
+            } else {
+                $userId = 'mock';
+            }
+        } else {
+            if ($user['status'] !== 'active') {
+                $errors[] = "Row {$total}: ID {$institutionalId} belongs to an archived student record.";
+                continue;
+            }
+            $userId = $user['id'];
+            if (!$dryRun && $clusterGroup !== '') {
+                $updateCluster = $pdo->prepare("UPDATE students SET cluster_group = ? WHERE id = ?");
+                $updateCluster->execute([$clusterGroup, $userId]);
+            }
         }
 
-        $checkEnroll->execute([$courseId, $user['id']]);
-        if ((int)$checkEnroll->fetchColumn() > 0) {
-            $errors[] = "Row {$total}: ID {$institutionalId} already enrolled.";
-            continue;
+        if (!$dryRun) {
+            $checkEnroll->execute([$courseId, $userId]);
+            if ((int)$checkEnroll->fetchColumn() > 0) {
+                $errors[] = "Row {$total}: ID {$institutionalId} already enrolled.";
+                continue;
+            }
         }
 
-        $valid[] = $user['id'];
+        $valid[] = $userId;
     }
     fclose($handle);
 
@@ -99,6 +169,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_csv'])) {
         }
     }
 
+    if (!$dryRun && !empty($generatedUsers)) {
+        $_SESSION['batch_export'] = $generatedUsers;
+    }
+
     $report = [
         'dry_run' => $dryRun,
         'enrolled' => $dryRun ? 0 : count($valid),
@@ -111,11 +185,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_csv'])) {
 
 $courses = $pdo->query("SELECT id, course_code, course_title FROM courses ORDER BY course_code")->fetchAll();
 
-// All POST handled — safe to output HTML
 require_once __DIR__ . '/../includes/header.php';
 ?>
-<h1>CSV Batch Enrollment</h1>
-<p class="muted">Upload a CSV with an <strong>ID</strong> column. The system validates each student before linking them to the selected course.</p>
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 2rem;">
+    <div>
+        <h1 style="margin-bottom:0.5rem;">CSV Batch Enrollment</h1>
+        <p class="muted" style="margin-bottom:0;">Upload a CSV with <strong>First Name</strong> and <strong>Last Name</strong> columns to auto-generate accounts, or include an <strong>ID</strong> to enroll existing students.</p>
+    </div>
+    <form method="post">
+        <input type="hidden" name="download_template" value="1">
+        <button class="btn secondary" type="submit">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download Template
+        </button>
+    </form>
+</div>
 
 <form class="panel" method="post" enctype="multipart/form-data">
     <input type="hidden" name="process_csv" value="1">
@@ -130,14 +214,30 @@ require_once __DIR__ . '/../includes/header.php';
         </label>
         <label><span class="small">CSV File</span><input class="input" type="file" name="csv_file" accept=".csv" required></label>
     </div>
-    <div class="form-row one" style="display:flex;align-items:center;gap:10px;">
-        <label style="display:flex;align-items:center;gap:10px;">
-            <input type="checkbox" name="dry_run" value="1">
-            <span class="small">Dry Run (validate only, do not save to database)</span>
-        </label>
+    <div class="form-row">
+        <label><span class="small">Cluster/Group (Optional)</span><input class="input" type="text" name="cluster_group" placeholder="e.g. Batch 2024 / Computer Science"></label>
+        <div style="display:flex;align-items:center;padding-top:20px;">
+            <label style="display:flex;align-items:center;gap:10px;">
+                <input type="checkbox" name="dry_run" value="1">
+                <span class="small">Dry Run (validate only)</span>
+            </label>
+        </div>
     </div>
     <button class="btn" type="submit">Process CSV</button>
 </form>
+
+<?php if (!empty($_SESSION['batch_export'])): ?>
+    <div class="panel" style="margin-top:20px; border-color:var(--success); background:rgba(31,157,85,0.06);">
+        <h3 style="margin-top:0;color:var(--success);">Credentials Export Generated</h3>
+        <p>New students were created during this batch enrollment. Download their auto-generated credentials now.</p>
+        <form method="post" target="_blank" style="margin-top:10px;">
+           <input type="hidden" name="export_data" value="<?= esc(json_encode($_SESSION['batch_export'])) ?>">
+           <input type="hidden" name="export_csv" value="1">
+           <button class="btn success" type="submit">Download CSV File</button>
+        </form>
+        <?php unset($_SESSION['batch_export']); ?>
+    </div>
+<?php endif; ?>
 
 <?php if ($report): ?>
     <div class="panel" style="margin-top:20px;">
