@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS students;
 DROP TABLE IF EXISTS teachers;
 DROP TABLE IF EXISTS admins;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS support_requests;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE admins (
@@ -99,7 +100,7 @@ CREATE TABLE enrollments (
 CREATE TABLE attendance_sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
-    teacher_user_id INT NOT NULL,
+    teacher_user_id INT NULL,
     session_date DATETIME NOT NULL,
     session_type ENUM('L','T','W') NOT NULL,
     created_at DATETIME NOT NULL DEFAULT UTC_TIMESTAMP(),
@@ -227,4 +228,13 @@ CREATE TABLE IF NOT EXISTS quiz_answers (
     CONSTRAINT fk_answer_attempt FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,
     CONSTRAINT fk_answer_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
     CONSTRAINT fk_answer_option FOREIGN KEY (selected_option_id) REFERENCES question_options(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS support_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(180) NOT NULL,
+    message TEXT NOT NULL,
+    status ENUM('pending', 'resolved') NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT UTC_TIMESTAMP()
 );
