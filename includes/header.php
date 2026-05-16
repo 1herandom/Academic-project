@@ -1,17 +1,40 @@
 <?php
+/**
+ * Feature: Smart Header Navigation & CSRF Token Generation
+ * Feature Maker: Bipin Guragain
+ * Feature Name: Intelligent Home Navigation & Global CSRF Protection (AP-44)
+ * Description: The institutional logo acts as a smart home button that checks the
+ *              active user session and redirects to the correct role-specific dashboard.
+ *              Also generates a global CSRF token on each page load for form protection.
+ */
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/auth.php';
 ensure_user_active();
-
-/* Feature 5 | Bipin Guragain: Smart role-aware logo home button */
-
 $user    = current_user();
 $flash   = flash_get();
 $initials = user_initials($user);
 
+// ── Global CSRF token (AP-44 Security) ────────────────────────────────────
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ── Smart home URL based on user role ─────────────────────────────────────
+$homeUrl = match ($user['role'] ?? '') {
+    'Academic Admin' => APP_BASE_URL . '/admin/index.php',
+    'Teacher'        => APP_BASE_URL . '/teacher/index.php',
+    default          => APP_BASE_URL . '/student/index.php',
+};
+
 $activePath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
 function nav_active(string $needle): string {
     global $activePath;
+    $lastChar = substr($needle, -1);
+    if (preg_match('/[a-zA-Z0-9]/', $lastChar)) {
+        // Ensure the match is not followed by another alphanumeric character
+        return preg_match('#' . preg_quote($needle, '#') . '(?![a-zA-Z0-9])#', $activePath) ? 'active' : '';
+    }
     return str_contains($activePath, $needle) ? 'active' : '';
 }
 
@@ -25,15 +48,31 @@ if (!empty($user['profile_photo'])) {
 <html lang="en">
 <head>
     <script>
-        if (localStorage.getItem('theme') === 'light') {
+        // Set light mode as default if no theme is stored
+        if (localStorage.getItem('theme') !== 'dark') {
             document.documentElement.classList.add('light-mode');
+            if (!localStorage.getItem('theme')) {
+                localStorage.setItem('theme', 'light');
+            }
         }
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Herald</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/style.css">
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/main.css">
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/utilities.css">
+    <?php if (basename($_SERVER['PHP_SELF']) === 'chatbot.php'): ?>
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/chatbot.css">
+    <?php elseif (basename($_SERVER['PHP_SELF']) === 'library.php'): ?>
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/library.css">
+    <?php elseif (str_contains($_SERVER['REQUEST_URI'], '/admin/')): ?>
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/admin.css">
+    <?php elseif (str_contains($_SERVER['REQUEST_URI'], '/student/')): ?>
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/student.css">
+    <?php elseif (str_contains($_SERVER['REQUEST_URI'], '/teacher/')): ?>
+    <link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/teacher.css">
+    <?php endif; ?>
 </head>
 <body>
 
@@ -45,7 +84,7 @@ if (!empty($user['profile_photo'])) {
             <span class="hamburger-line"></span>
             <span class="hamburger-line"></span>
         </button>
-        <a href="<?= APP_BASE_URL ?>/dashboard.php" class="brand-home-link" title="Go to Dashboard">
+        <a href="<?= $homeUrl ?>" style="display:flex; align-items:center; gap:1rem; text-decoration:none;" title="Go to my dashboard">
             <div class="brand-badge">H</div>
             <div class="brand-text">
                 <div class="brand-name">Herald</div>
@@ -55,27 +94,29 @@ if (!empty($user['profile_photo'])) {
     </div>
 
     <div class="topbar-right">
-        <button id="theme-toggle" class="btn secondary sm" style="border-radius:50%; width:36px; height:36px; padding:0; display:grid; place-items:center;" aria-label="Toggle theme">
-            <svg id="theme-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px;">
+        <button id="theme-toggle" class="btn secondary sm theme-btn" aria-label="Toggle theme">
+            <svg id="theme-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="theme-icon">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
         </button>
-        <div class="topbar-user-info" style="margin-left:8px;">
+        <div class="topbar-user-info ml-2">
             <div class="topbar-user-name"><?= esc(user_display_name($user)) ?></div>
             <div class="topbar-user-role"><?= esc($user['role']) ?></div>
         </div>
-        <?php if ($photoUrl): ?>
-            <img id="topbar-avatar-el"
-                 class="topbar-avatar"
-                 src="<?= $photoUrl ?>"
-                 alt="<?= esc(user_display_name($user)) ?>">
-        <?php else: ?>
-            <div id="topbar-avatar-el"
-                 class="topbar-avatar topbar-avatar--initials"
-                 title="<?= esc(user_display_name($user)) ?>">
-                <?= esc($initials) ?>
-            </div>
-        <?php endif; ?>
+        <a href="<?= APP_BASE_URL ?>/settings.php" style="display:flex; align-items:center; text-decoration:none;">
+            <?php if ($photoUrl): ?>
+                <img id="topbar-avatar-el"
+                     class="topbar-avatar"
+                     src="<?= $photoUrl ?>"
+                     alt="<?= esc(user_display_name($user)) ?>">
+            <?php else: ?>
+                <div id="topbar-avatar-el"
+                     class="topbar-avatar topbar-avatar--initials"
+                     title="<?= esc(user_display_name($user)) ?>">
+                    <?= esc($initials) ?>
+                </div>
+            <?php endif; ?>
+        </a>
     </div>
 </header>
 
@@ -114,6 +155,52 @@ if (!empty($user['profile_photo'])) {
             Herald AI
         </a>
 
+        <a class="nav-link <?= nav_active('/library.php') ?>"
+           href="<?= APP_BASE_URL ?>/library.php">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
+            </svg>
+            Open Library
+        </a>
+
+        <a class="nav-link <?= nav_active('/chat') ?>" href="<?= APP_BASE_URL ?>/chat.php" style="position:relative;">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.862 9.862 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+            Messages
+            <?php
+            try {
+                // 1. Direct unread
+                $directStmt = db()->prepare("
+                    SELECT COUNT(*) FROM chat_messages cm
+                    JOIN chat_conversations c ON c.id = cm.conversation_id
+                    WHERE cm.is_read = 0
+                      AND cm.sender_role != ?
+                      AND cm.sender_id   != ?
+                      AND ((c.initiator_role = ? AND c.initiator_id = ?)
+                        OR (c.participant_role = ? AND c.participant_id = ?))
+                ");
+                $directStmt->execute([$user['role'], $user['id'], $user['role'], $user['id'], $user['role'], $user['id']]);
+                $directCount = (int)$directStmt->fetchColumn();
+
+                // 2. Group unread
+                $groupStmt = db()->prepare("
+                    SELECT COUNT(*) FROM chat_messages cm
+                    JOIN group_chat_members gm ON gm.group_id = cm.group_id
+                    WHERE gm.user_role = ? AND gm.user_id = ?
+                      AND cm.sent_at > gm.last_read_at
+                      AND (cm.sender_role != ? OR cm.sender_id != ?)
+                ");
+                $groupStmt->execute([$user['role'], $user['id'], $user['role'], $user['id']]);
+                $groupCount = (int)$groupStmt->fetchColumn();
+
+                $totalUnread = $directCount + $groupCount;
+                if ($totalUnread > 0): ?>
+                    <span style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:var(--herald-red); color:#fff; font-size:.65rem; font-weight:700; border-radius:999px; padding:1px 6px; min-width:18px; text-align:center; box-shadow:0 0 0 2px var(--surface-solid);"><?= $totalUnread ?></span>
+                <?php endif;
+            } catch (Exception $e) { }
+            ?>
+        </a>
     </div>
 
     <!-- Role-specific nav -->
@@ -161,12 +248,40 @@ if (!empty($user['profile_photo'])) {
             Notice Board
         </a>
 
-        <a class="nav-link <?= nav_active('/admin/passwords.php') ?>"
-           href="<?= APP_BASE_URL ?>/admin/passwords.php">
+        <a class="nav-link <?= nav_active('/admin/requests.php') ?>"
+           href="<?= APP_BASE_URL ?>/admin/requests.php" style="position:relative;">
             <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
             </svg>
-            Password Reset
+            Request Board
+            <?php
+            // AP-44 | Feature Maker: Bipin Guragain — Badge counts both password_requests + support_requests
+            try {
+                $pendingReqs = 0;
+                $pendingReqs += (int)db()->query("SELECT COUNT(*) FROM support_requests WHERE status = 'pending'")->fetchColumn();
+                try { $pendingReqs += (int)db()->query("SELECT COUNT(*) FROM password_requests WHERE status = 'pending'")->fetchColumn(); }
+                catch (Exception $e) {}
+                if ($pendingReqs > 0): ?>
+                    <span style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:var(--herald-gold); color:#000; font-size:.65rem; font-weight:700; border-radius:999px; padding:1px 6px; min-width:18px; text-align:center; box-shadow:0 0 0 2px var(--surface-solid);"><?= $pendingReqs ?></span>
+                <?php endif;
+            } catch (Exception $e) { }
+            ?>
+        </a>
+
+        <a class="nav-link <?= nav_active('/admin/attendance.php') ?>"
+           href="<?= APP_BASE_URL ?>/admin/attendance.php">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Attendance
+        </a>
+
+        <a class="nav-link <?= nav_active('/admin/performance.php') ?>"
+           href="<?= APP_BASE_URL ?>/admin/performance.php">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            Student Performance
         </a>
     </div>
 
@@ -206,6 +321,14 @@ if (!empty($user['profile_photo'])) {
             Quizzes
         </a>
 
+        <a class="nav-link <?= nav_active('/teacher/performance.php') ?>"
+           href="<?= APP_BASE_URL ?>/teacher/performance.php">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            Performance
+        </a>
+
         <a class="nav-link <?= nav_active('/teacher/notices.php') ?>"
            href="<?= APP_BASE_URL ?>/teacher/notices.php">
             <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -218,14 +341,6 @@ if (!empty($user['profile_photo'])) {
     <?php else: ?>
     <div class="nav-group">
         <span class="nav-title">Student Portal</span>
-
-        <a class="nav-link <?= nav_active('/student/index.php') ?>"
-           href="<?= APP_BASE_URL ?>/student/index.php">
-            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-            </svg>
-            Home
-        </a>
 
         <a class="nav-link <?= nav_active('/student/attendance.php') ?>"
            href="<?= APP_BASE_URL ?>/student/attendance.php">
@@ -292,16 +407,26 @@ if (!empty($user['profile_photo'])) {
 <?php endif; ?>
 
 <?php if (!empty($_SESSION['temp_password'])): ?>
-    <div class="panel" style="margin-bottom:16px; border-color:var(--success); background:rgba(31,157,85,0.06);">
-        <h3 style="margin-top:0;color:var(--success); display:flex; align-items:center; gap:8px;">
+    <div class="panel mb-4 border-success bg-success-light">
+        <h3 class="mt-0 color-success flex-align-center gap-2" style="font-size:1.1rem;">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            Credential Generated
+            Temporary Password Generated
         </h3>
-        <p>A new secure password has been generated. Please copy it now as it will not be shown again.</p>
-        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-            <input type="text" class="input" style="font-family:monospace; font-weight:bold; max-width:240px; background:var(--bg-color); color:var(--herald-green); font-size:16px; border:1px solid var(--herald-green);" id="gen-password" value="<?= esc($_SESSION['temp_password']) ?>" readonly>
-            <button class="btn green" style="min-height:44px;" onclick="navigator.clipboard.writeText(document.getElementById('gen-password').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy to Clipboard', 2000);">Copy to Clipboard</button>
+        <p class="mb-0">A new secure password has been generated. Copy it now because it will not be shown again.</p>
+        <?php if (!empty($_SESSION['new_user_email'])): ?>
+            <p class="small mt-2">Login email: <strong><?= esc($_SESSION['new_user_email']) ?></strong></p>
+        <?php endif; ?>
+        <?php if (isset($_SESSION['email_sent'])): ?>
+            <?php if ($_SESSION['email_sent'] === true): ?>
+                <p class="small mt-1">Credentials were emailed to <strong><?= esc($_SESSION['personal_email'] ?: $_SESSION['new_user_email']) ?></strong>.</p>
+            <?php elseif (!empty($_SESSION['email_error'])): ?>
+                <p class="small mt-1 color-error">Email failed: <?= esc($_SESSION['email_error']) ?></p>
+            <?php endif; ?>
+        <?php endif; ?>
+        <div class="d-flex gap-10 flex-align-center mt-3">
+            <input type="text" class="input font-mono font-bold max-w-240 bg-color color-herald-green text-16 border-herald-green" id="gen-password" value="<?= esc($_SESSION['temp_password']) ?>" readonly>
+            <button class="btn green min-h-44" onclick="navigator.clipboard.writeText(document.getElementById('gen-password').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy to Clipboard', 2000);">Copy to Clipboard</button>
         </div>
     </div>
-    <?php unset($_SESSION['temp_password']); ?>
+    <?php unset($_SESSION['temp_password'], $_SESSION['email_sent'], $_SESSION['email_error'], $_SESSION['personal_email'], $_SESSION['new_user_email']); ?>
 <?php endif; ?>
