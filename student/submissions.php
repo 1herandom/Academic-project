@@ -2,13 +2,6 @@
 require_once __DIR__ . '/../includes/header.php';
 require_role('Student');
 
-/*
-|--------------------------------------------------------------------------
-| Feature 2 | Suprim: Assignment file upload engine with deadline enforcement
-| Feature 3 | Suprim: Automated time-fencing with server-side deadline validation
-|--------------------------------------------------------------------------
-*/
-
 $pdo = db();
 $studentId = current_user()['id'];
 $uploadDir = __DIR__ . '/../storage/uploads/assignments/';
@@ -133,6 +126,17 @@ if ($selectedCourseId) {
     </div>
 </form>
 
+<div id="assignmentSearchContainer" style="margin-bottom: 1.5rem; position: relative; <?= $selectedCourseId ? '' : 'display:none;' ?>">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--text-faint);">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <input type="text" id="assignmentSearch" class="input" placeholder="Search assignments in this course..." style="padding-left:38px;" onkeyup="filterSubmissions()">
+</div>
+
+<div id="noAssignmentsFound" style="display:none; text-align:center; padding:32px; color:var(--text-muted);" class="panel">
+    No matching assignments found.
+</div>
+
 <?php foreach ($assignments as $a): 
     $deadline = new DateTimeImmutable($a['deadline_at'], new DateTimeZone('UTC'));
     $closed = (new DateTimeImmutable('now', new DateTimeZone('UTC'))) >= $deadline->modify('+1 minute');
@@ -166,5 +170,29 @@ if ($selectedCourseId) {
     </form>
 </div>
 <?php endforeach; ?>
+
+<script>
+function filterSubmissions() {
+    const q = document.getElementById('assignmentSearch').value.toLowerCase();
+    const panels = document.querySelectorAll('.panel-margin');
+    let hasResults = false;
+
+    panels.forEach(p => {
+        const title = p.querySelector('.panel-title')?.innerText.toLowerCase() || '';
+        const desc  = p.innerText.toLowerCase();
+        if (title.includes(q) || desc.includes(q)) {
+            p.style.display = '';
+            hasResults = true;
+        } else {
+            p.style.display = 'none';
+        }
+    });
+
+    const empty = document.getElementById('noAssignmentsFound');
+    if (panels.length > 0) {
+        empty.style.display = hasResults ? 'none' : 'block';
+    }
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

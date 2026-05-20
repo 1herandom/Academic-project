@@ -5,26 +5,35 @@ require_role('Academic Admin');
 
 $pdo = db();
 
+// AP-44 Security | Feature Maker: Bipin Guragain — CSRF protection for user creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
-    $first = trim($_POST['first_name'] ?? '');
-    $last = trim($_POST['last_name'] ?? '');
-    $role = $_POST['role'] ?? '';
-    
-    // Check required basic fields
+    if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+        flash_set('error', 'Invalid security token.');
+        redirect('/admin/add_user.php');
+    }
+    // AP-44: Sanitize name inputs against XSS
+    $first         = htmlspecialchars(strip_tags(trim($_POST['first_name']    ?? '')), ENT_QUOTES, 'UTF-8');
+    $last          = htmlspecialchars(strip_tags(trim($_POST['last_name']     ?? '')), ENT_QUOTES, 'UTF-8');
+    $role          = $_POST['role']               ?? '';
+    $personalEmail = trim($_POST['personal_email'] ?? '');
+
     if ($first === '' || $last === '' || !in_array($role, ['Academic Admin','Teacher','Student'], true)) {
         flash_set('error', 'Please fill in all required fields.');
         redirect('/admin/add_user.php');
     }
 
-    $course_id = (int)($_POST['course_id'] ?? 0);
+    // Validate personal email
+    if ($personalEmail !== '' && !filter_var($personalEmail, FILTER_VALIDATE_EMAIL)) {
+        flash_set('error', 'Invalid personal email address.');
+        redirect('/admin/add_user.php');
+    }
 
-    // For Teacher and Student, course_id is mandatory
+    $course_id = (int)($_POST['course_id'] ?? 0);
     if (($role === 'Teacher' || $role === 'Student') && $course_id <= 0) {
         flash_set('error', 'A course must be selected for Teachers and Students.');
         redirect('/admin/add_user.php');
     }
 
-    // Retrieve course code if a course is selected
     $course_code = '';
     if ($course_id > 0) {
         $courseStmt = $pdo->prepare("SELECT course_code FROM courses WHERE id = ?");
@@ -32,15 +41,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
         $course_code = $courseStmt->fetchColumn();
     }
 
-    // Auto-generate Institutional ID
     $studentCode = null;
     $teacherCode = null;
 
     if ($role === 'Student') {
-        $studentCode = unique_code(4, 'student_code', 'students');
+        $studentCode      = unique_code(4, 'student_code', 'students');
         $institutional_id = $course_code . $studentCode;
     } elseif ($role === 'Teacher') {
-        $teacherCode = unique_code(4, 'teacher_code', 'teachers');
+        $teacherCode      = unique_code(4, 'teacher_code', 'teachers');
         $institutional_id = 'TCH' . $teacherCode;
     } else {
         do {
@@ -52,35 +60,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
     }
 
     $tempPassword = generate_temp_password();
-    $hash = password_hash($tempPassword, PASSWORD_BCRYPT);
-    $email = '';
+    $hash         = password_hash($tempPassword, PASSWORD_BCRYPT);
+    $loginEmail   = '';
+    $table        = $role === 'Academic Admin' ? 'admins' : ($role === 'Teacher' ? 'teachers' : 'students');
+    $hasPersonalEmail = column_exists($table, 'personal_email');
 
     if ($role === 'Academic Admin') {
-        $email = build_email($first, $last, $role);
-        $stmt = $pdo->prepare("INSERT INTO admins (institutional_id, first_name, last_name, email, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, 1, 'active')");
-        $stmt->execute([$institutional_id, $first, $last, $email, $hash]);
-    } else if ($role === 'Teacher') {
-        $email = build_email($first, $last, $role, $teacherCode, '');
-        $stmt = $pdo->prepare("INSERT INTO teachers (institutional_id, first_name, last_name, email, teacher_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'active')");
-        $stmt->execute([$institutional_id, $first, $last, $email, $teacherCode, $hash]);
-        $teacherId = $pdo->lastInsertId();
-        
-        if ($course_id > 0) {
-            $pdo->prepare("UPDATE courses SET teacher_user_id = ? WHERE id = ?")->execute([$teacherId, $course_id]);
+        $loginEmail = build_email($first, $last, $role);
+        if ($hasPersonalEmail) {
+            $stmt = $pdo->prepare("INSERT INTO admins (institutional_id, first_name, last_name, email, personal_email, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $personalEmail ?: null, $hash]);
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO admins (institutional_id, first_name, last_name, email, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $hash]);
         }
+    } elseif ($role === 'Teacher') {
+        $loginEmail = build_email($first, $last, $role, $teacherCode, '');
+        if ($hasPersonalEmail) {
+            $stmt = $pdo->prepare("INSERT INTO teachers (institutional_id, first_name, last_name, email, personal_email, teacher_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $personalEmail ?: null, $teacherCode, $hash]);
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO teachers (institutional_id, first_name, last_name, email, teacher_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $teacherCode, $hash]);
+        }
+        $teacherId = $pdo->lastInsertId();
+        if ($course_id > 0)
+            $pdo->prepare("UPDATE courses SET teacher_user_id = ? WHERE id = ?")->execute([$teacherId, $course_id]);
     } else {
-        $email = strtolower($institutional_id) . '@smart.edu.no';
-        $stmt = $pdo->prepare("INSERT INTO students (institutional_id, first_name, last_name, email, student_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'active')");
-        $stmt->execute([$institutional_id, $first, $last, $email, $studentCode, $hash]);
+        $loginEmail = strtolower($institutional_id) . '@smart.edu.np';
+        if ($hasPersonalEmail) {
+            $stmt = $pdo->prepare("INSERT INTO students (institutional_id, first_name, last_name, email, personal_email, student_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $personalEmail ?: null, $studentCode, $hash]);
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO students (institutional_id, first_name, last_name, email, student_code, password_hash, temp_password, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'active')");
+            $stmt->execute([$institutional_id, $first, $last, $loginEmail, $studentCode, $hash]);
+        }
         $studentId = $pdo->lastInsertId();
-        
-        if ($course_id > 0) {
+        if ($course_id > 0)
             $pdo->prepare("INSERT INTO enrollments (course_id, student_user_id) VALUES (?, ?)")->execute([$course_id, $studentId]);
+    }
+
+    // Auto-send password email if personal email was provided
+    $emailSent = false;
+    $emailError = '';
+    if ($personalEmail !== '') {
+        $emailHtml = build_password_reset_email(trim("$first $last"), $tempPassword, $loginEmail);
+        $result    = send_smtp_email($personalEmail, trim("$first $last"), 'Your Herald Account Has Been Created', $emailHtml);
+        if ($result === true) {
+            $emailSent = true;
+        } else {
+            $emailError = $result;
         }
     }
 
-    flash_set('success', "User created. Email: {$email}");
-    $_SESSION['temp_password'] = $tempPassword;
+    $_SESSION['temp_password']   = $tempPassword;
+    $_SESSION['new_user_email']  = $loginEmail;
+    $_SESSION['email_sent']      = $emailSent;
+    $_SESSION['email_error']     = $emailError;
+    $_SESSION['personal_email']  = $personalEmail;
+
+    flash_set('success', "User created. Login email: {$loginEmail}");
     redirect('/admin/users.php');
 }
 
@@ -100,6 +139,8 @@ require_once __DIR__ . '/../includes/header.php';
     <form class="panel" method="post">
         <h3 class="panel-title">Create Account</h3>
         <input type="hidden" name="create_user" value="1">
+        <!-- AP-44 CSRF | Feature Maker: Bipin Guragain -->
+        <input type="hidden" name="csrf_token" value="<?= esc($_SESSION['csrf_token'] ?? '') ?>">
         <div class="form-row">
             <label><span class="small">First Name</span><input class="input" type="text" name="first_name" required></label>
             <label><span class="small">Last Name</span><input class="input" type="text" name="last_name" required></label>
@@ -113,7 +154,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <option value="Student">Student</option>
                 </select>
             </label>
-            <label id="course_wrap" class="d-none"><span class="small">Course (Must for Teacher & Student)</span>
+            <label id="course_wrap" class="d-none"><span class="small">Course (required for Teacher &amp; Student)</span>
                 <select name="course_id" id="course_select" class="input">
                     <option value="">Select Course</option>
                     <?php foreach ($courses as $c): ?>
@@ -122,10 +163,16 @@ require_once __DIR__ . '/../includes/header.php';
                 </select>
             </label>
         </div>
-        <div class="notice">
-            Teacher email format: <strong>full.name + teacher id + @smart.edu.no</strong><br>
-            Student email format: <strong>course id + 4digit intitution id + @smart.edu.no</strong>
+
+        <label style="margin-top:12px;">
+            <span class="small">Personal Email <span class="muted">(optional — used to send login credentials)</span></span>
+            <input class="input" type="email" name="personal_email" placeholder="user@gmail.com">
+        </label>
+
+        <div class="notice mt-8">
+            If a personal email is provided, login credentials will be <strong>automatically emailed</strong> to the user on account creation.
         </div>
+
         <div class="form-actions mt-14">
             <button class="btn" type="submit">Create User</button>
         </div>
@@ -133,24 +180,22 @@ require_once __DIR__ . '/../includes/header.php';
 
     <div class="panel">
         <h3 class="panel-title">Account Rules</h3>
-        <p class="small">Institutional IDs are unique across the entire database and auto-generated for all roles.</p>
-        <p class="small">Teacher IDs are generated as 4-digit codes. Student IDs are generated using the Course ID and a 4-digit code.</p>
-        <p class="small">Temporary passwords are issued on first login and can be changed later.</p>
+        <p class="small">Institutional IDs are auto-generated for all roles.</p>
+        <p class="small">Teacher IDs: <code>TCH + 4-digit code</code>. Student IDs: <code>CourseCode + 4-digit code</code>.</p>
+        <p class="small">A temporary password is issued on creation. The user must change it on first login.</p>
+        <p class="small">Login email format:<br>
+            Teacher: <code>first.last{code}@smart.edu.np</code><br>
+            Student: <code>{institutionalid}@smart.edu.np</code>
+        </p>
     </div>
 </div>
 
-</div>
-
 <script>
-document.getElementById('role_select').addEventListener('change', function() {
+document.getElementById('role_select').addEventListener('change', function () {
     const role = this.value;
-    const courseWrap = document.getElementById('course_wrap');
+    const courseWrap   = document.getElementById('course_wrap');
     const courseSelect = document.getElementById('course_select');
-
-    if (role === 'Student') {
-        courseWrap.classList.remove('d-none');
-        courseSelect.required = true;
-    } else if (role === 'Teacher') {
+    if (role === 'Student' || role === 'Teacher') {
         courseWrap.classList.remove('d-none');
         courseSelect.required = true;
     } else {

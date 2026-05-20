@@ -1,9 +1,6 @@
 <?php
 require_once __DIR__ . '/../config.php';
 
-/* Feature 5 | Suprim: Credential validation and secure session security
-   Feature 1 | Bipin Guragain: Post-login redirect to role dashboards */
-
 function handle_login(): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
 
