@@ -1,12 +1,18 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Feature By | Bipin Guragain: Attendance features.
+|--------------------------------------------------------------------------
+*/
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_role('Academic Admin');
 
 $pdo = db();
 
-// ── Search / filter params Suprim────────────────────────────────────────────────────
+// ── Search / filter params ────────────────────────────────────────────────────
 $filterDateFrom = $_GET['date_from'] ?? '';
 $filterDateTo   = $_GET['date_to']   ?? '';
 $filterType     = $_GET['session_type'] ?? '';
@@ -36,6 +42,7 @@ $sql = "
     ORDER  BY s.session_date DESC
     LIMIT  100
 ";
+
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $recentSessions = $stmt->fetchAll();

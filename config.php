@@ -63,6 +63,7 @@ function db(): PDO {
     ]);
     // Run automatic migrations on first connection
     ensure_personal_email_columns();
+    ensure_session_token_columns();
     return $pdo;
 }
 
@@ -86,8 +87,36 @@ function sanitize_input(?string $value): string {
     return htmlspecialchars(strip_tags(trim((string)$value)), ENT_QUOTES, 'UTF-8');
 }
 function redirect(string $path): void { header('Location: ' . APP_BASE_URL . $path); exit; }
-function current_user(): ?array { return $_SESSION['user'] ?? null; }
-function is_logged_in(): bool   { return !empty($_SESSION['user']); }
+function current_user(): ?array {
+    static $validatedUser = null;
+    if ($validatedUser !== null) return $validatedUser;
+    
+    if (empty($_SESSION['user'])) return null;
+    $user = $_SESSION['user'];
+    
+    if (empty($user['session_token'])) {
+        unset($_SESSION['user']);
+        return null;
+    }
+    
+    $table = $user['table'] ?? 'admins';
+    try {
+        $stmt = db()->prepare("SELECT session_token FROM {$table} WHERE id=?");
+        $stmt->execute([$user['id']]);
+        $dbToken = $stmt->fetchColumn();
+        
+        if (empty($dbToken) || $dbToken !== $user['session_token']) {
+            unset($_SESSION['user']);
+            return null;
+        }
+    } catch (PDOException $e) {
+        // Just in case migration hasn't run yet
+    }
+    
+    $validatedUser = $user;
+    return $validatedUser;
+}
+function is_logged_in(): bool   { return current_user() !== null; }
 function flash_set(string $type, string $message): void { $_SESSION['flash'] = ['type' => $type, 'message' => $message]; }
 function flash_get(): ?array {
     if (empty($_SESSION['flash'])) return null;
@@ -129,6 +158,20 @@ function ensure_column_exists(string $table, string $column, string $definition)
     db()->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
 }
 
+function ensure_session_token_columns(): void {
+    $cols = [
+        'admins'   => 'VARCHAR(64) NULL',
+        'teachers' => 'VARCHAR(64) NULL',
+        'students' => 'VARCHAR(64) NULL',
+    ];
+    foreach ($cols as $table => $definition) {
+        try {
+            ensure_column_exists($table, 'session_token', $definition);
+        } catch (PDOException $ex) {
+        }
+    }
+}
+
 function ensure_personal_email_columns(): void {
     $cols = [
         'admins'   => 'personal_email VARCHAR(180) NULL AFTER email',
@@ -160,20 +203,44 @@ function safe_filename(string $name): string {
     return trim($name, '_');
 }
 
-function login_user(array $user, bool $remember = false): void {
+function login_user(array $user, bool $remember = false, bool $is_remember_me = false): void {
+    $table = $user['table'] ?? 'admins';
+    
+    if (!$is_remember_me) {
+        try {
+            $stmt = db()->prepare("SELECT session_token FROM {$table} WHERE id=?");
+            $stmt->execute([$user['id']]);
+            $existingToken = $stmt->fetchColumn();
+            
+            if (!empty($existingToken)) {
+                db()->prepare("UPDATE {$table} SET session_token = NULL WHERE id=?")->execute([$user['id']]);
+                logout_user();
+                flash_set('error', 'Concurrent login detected. All sessions have been logged off.');
+                redirect('/index.php');
+                exit;
+            }
+        } catch (PDOException $e) {}
+    }
+    
     session_regenerate_id(true);
+    $newToken = bin2hex(random_bytes(16));
+    try {
+        db()->prepare("UPDATE {$table} SET session_token = ? WHERE id=?")->execute([$newToken, $user['id']]);
+    } catch (PDOException $e) {}
+
     $_SESSION['user'] = [
         'id'               => $user['id'],
         'institutional_id' => $user['institutional_id'],
         'first_name'       => $user['first_name'],
         'last_name'        => $user['last_name'],
         'role'             => $user['role'],
-        'table'            => $user['table'] ?? '',
+        'table'            => $table,
         'email'            => $user['email'],
         'teacher_code'     => $user['teacher_code']  ?? null,
         'student_code'     => $user['student_code']  ?? null,
         'status'           => $user['status']        ?? 'active',
         'profile_photo'    => $user['profile_photo'] ?? null,
+        'session_token'    => $newToken,
     ];
     if ($remember) {
         $selector  = bin2hex(random_bytes(8));
@@ -201,6 +268,13 @@ function logout_user(): void {
         }
         setcookie('smartedu_remember', '', time() - 3600, '/');
     }
+    if (!empty($_SESSION['user']['session_token'])) {
+        $u = $_SESSION['user'];
+        $table = $u['table'] ?? 'admins';
+        try {
+            db()->prepare("UPDATE {$table} SET session_token = NULL WHERE id=? AND session_token=?")->execute([$u['id'], $u['session_token']]);
+        } catch (PDOException $e) {}
+    }
     unset($_SESSION['user']);
     session_regenerate_id(true);
 }
@@ -218,7 +292,7 @@ function attempt_remember_login(): void {
     }
     if (!$user || !hash_equals($user['remember_token_hash'] ?? '', hash('sha256', $validator))) return;
     $user['role'] = $role; $user['table'] = $table;
-    login_user($user, false);
+    login_user($user, false, true);
 }
 
 function require_login(): void {

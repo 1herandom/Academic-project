@@ -1,4 +1,10 @@
 <?php
+/*
+|------------------------------------------------------------------------------------
+  Feature By | Rijan Adhikari: Admin user/course management entry point
+  Feature By | Bipin Guragain: Password reset request management & Approve/Reset Workflow
+|------------------------------------------------------------------------------------
+*/
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/auth.php';

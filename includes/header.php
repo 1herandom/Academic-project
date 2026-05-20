@@ -1,4 +1,12 @@
 <?php
+/**
+ * Feature: Smart Header Navigation & CSRF Token Generation
+ * Feature Maker: Bipin Guragain
+ * Feature Name: Intelligent Home Navigation & Global CSRF Protection (AP-44)
+ * Description: The institutional logo acts as a smart home button that checks the
+ *              active user session and redirects to the correct role-specific dashboard.
+ *              Also generates a global CSRF token on each page load for form protection.
+ */
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/auth.php';
@@ -207,14 +215,6 @@ if (!empty($user['profile_photo'])) {
     <?php if ($user['role'] === 'Academic Admin'): ?>
     <div class="nav-group">
         <span class="nav-title">Admin Tools</span>
-
-        <a class="nav-link <?= nav_active('/admin/index.php') ?>"
-           href="<?= APP_BASE_URL ?>/admin/index.php">
-            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-            </svg>
-            Overview
-        </a>
 
         <a class="nav-link <?= nav_active('/admin/users.php') ?>"
            href="<?= APP_BASE_URL ?>/admin/users.php">

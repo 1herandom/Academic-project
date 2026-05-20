@@ -2,6 +2,13 @@
 require_once __DIR__ . '/../includes/header.php';
 require_role('Student');
 
+/*
+|--------------------------------------------------------------------------
+| Feature 3 | Bipin Guragain: Attendance progress visualization and warnings
+| Feature 4 | Bipin Guragain: Lecture/Tutorial/Workshop split details
+|--------------------------------------------------------------------------
+*/
+
 $pdo       = db();
 $studentId = current_user()['id'];
 

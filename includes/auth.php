@@ -1,6 +1,13 @@
 <?php
 require_once __DIR__ . '/../config.php';
 
+/*
+|-------------------------------------------------------------------------------------
+| Feature By | Bipin Guragain: Post-login redirect to role dashboards
+| Feature By | Suprim Pant: Credential validation and secure session security
+|-------------------------------------------------------------------------------------
+*/
+
 function handle_login(): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
 

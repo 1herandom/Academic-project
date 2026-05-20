@@ -2,6 +2,12 @@
 require_once __DIR__ . '/../includes/header.php';
 require_role('Teacher');
 
+/*
+|--------------------------------------------------------------------------
+| Feature 1 | Bipin: Teacher dashboard for session type attendance and records
+|--------------------------------------------------------------------------
+*/
+
 $pdo        = db();
 $teacherId  = current_user()['id'];
 
