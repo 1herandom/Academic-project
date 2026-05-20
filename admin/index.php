@@ -3,6 +3,14 @@
 require_once __DIR__ . '/../includes/header.php';
 require_role('Academic Admin');
 
+/*
+|--------------------------------------------------------------------------
+| Feature By | Bipin Guragain: Dynamic URL routing to the admin dashboard
+| Feature By | Bipin Guragain: Admin user/course management entry point
+| Feature By | Bipin Guragain: Pending password reset requests notification
+|--------------------------------------------------------------------------
+*/
+
 $pdo          = db();
 $adminCount   = (int)$pdo->query("SELECT COUNT(*) FROM admins WHERE status='active'")->fetchColumn();
 $teacherCount = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE status='active'")->fetchColumn();
