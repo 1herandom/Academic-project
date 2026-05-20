@@ -1,0 +1,251 @@
+/* Student Page Styles */
+
+/* Quiz Result Styles */
+.quiz-stat {
+    align-items: center;
+    text-align: center;
+    justify-content: center;
+    padding: 3rem;
+}
+
+.quiz-score {
+    font-size: 3rem;
+}
+
+.quiz-summary h3 {
+    margin-top: 0;
+}
+
+.quiz-summary-title {
+    margin-top: 0;
+}
+
+.quiz-list {
+    list-style: none;
+    padding: 0;
+}
+
+.quiz-list-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.quiz-correct {
+    color: var(--herald-green);
+    font-weight: bold;
+}
+
+.quiz-wrong {
+    color: var(--herald-red);
+    font-weight: bold;
+}
+
+/* Take Quiz Styles */
+.quiz-margin-bottom {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.quiz-question-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.quiz-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.quiz-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.quiz-margin-top {
+    margin-top: 1rem;
+}
+
+/* Quizzes Styles */
+.quizzes-padding {
+    padding: 3rem 0;
+}
+
+.quizzes-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 1rem;
+}
+
+.quizzes-margin-bottom {
+    margin-bottom: 0.5rem;
+}
+
+/* Submissions Styles */
+.submissions-margin-top {
+    margin-top: 20px;
+}
+
+.submissions-margin-top h3 {
+    margin-top: 0;
+}
+
+.submissions-margin-top p {
+    margin-top: 14px;
+}
+
+.submissions-margin-top .muted {
+    margin-top: 8px;
+}
+
+.submissions-margin-top .panel {
+    margin-top: 10px;
+}
+
+/* Materials Styles */
+.materials-center {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--text-muted);
+}
+
+.materials-mono {
+    font-family: monospace;
+}
+
+.materials-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+}
+
+/* Attendance Styles */
+.attendance-margin {
+    margin-top: 20px;
+}
+
+.attendance-margin h3 {
+    margin-top: 0;
+}
+
+/* Notices Styles */
+.notices-container {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.notices-empty {
+    padding: 48px;
+    text-align: center;
+    background: var(--bg-card);
+    border-radius: 12px;
+    margin-top: 16px;
+}
+
+.notices-empty-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--text-faint);
+    margin: 0 auto 16px;
+}
+
+.notices-empty-title {
+    margin: 0 0 8px;
+    color: var(--text-color);
+}
+
+.notices-empty-text {
+    margin: 0;
+}
+
+.notices-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.notice-item {
+    background: var(--bg-card);
+    border-left: 4px solid;
+    padding: 16px;
+}
+
+.notice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.notice-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+    color: var(--text-color);
+}
+
+.notice-content {
+    margin: 0 0 16px;
+    font-size: 15px;
+    color: var(--text-color);
+    line-height: 1.5;
+}
+
+.notice-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 16px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+}
+
+/* Dashboard Grid */
+.grid-3 {
+    margin-bottom: 24px;
+}
+
+.stat-panel {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.stat-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.stat-icon-green {
+    background: rgba(45, 198, 83, 0.12);
+    color: var(--herald-green);
+}
+
+.stat-icon-warning {
+    background: rgba(234, 179, 8, 0.12);
+    color: var(--herald-gold);
+}
+
+.stat-svg {
+    width: 18px;
+    height: 18px;
+}
+
+.stat-text {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 3px;
+}
